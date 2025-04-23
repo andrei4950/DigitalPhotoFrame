@@ -5,6 +5,7 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
 
+
 def scan_images(folder_path):
     """
     Recursively scan the given folder for image files.
@@ -17,32 +18,44 @@ def scan_images(folder_path):
                 image_paths.append(os.path.join(root, file))
     return image_paths
 
+
 class SlideshowWindow(QtWidgets.QWidget):
     def __init__(self, images, interval, parent=None):
         super().__init__(parent)
         self.images = images
         self.interval_ms = int(interval * 1000)
+        self.current_index = 0
+
+        # Ensure widget is deleted on close so MainWindow can re-show
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        # Black background
+        self.setStyleSheet("background-color: black;")
 
         # Fullscreen & borderless
         self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint)
         self.showFullScreen()
 
+        # Label for image display
         self.label = QtWidgets.QLabel(self)
         self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.label.setStyleSheet("background-color: black;")
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.label)
 
         # Timer for image changes
         self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.show_random_image)
+        self.timer.timeout.connect(self.show_next_image)
         self.timer.start(self.interval_ms)
-        self.show_random_image()
 
-    def show_random_image(self):
+        # Show initial image
+        self.show_image()
+
+    def show_image(self):
         if not self.images:
             return
-        img_path = random.choice(self.images)
+        img_path = self.images[self.current_index]
         pixmap = QtGui.QPixmap(img_path)
         if pixmap.isNull():
             return
@@ -54,17 +67,37 @@ class SlideshowWindow(QtWidgets.QWidget):
         )
         self.label.setPixmap(pixmap)
 
+    def show_next_image(self):
+        if not self.images:
+            return
+        self.current_index = (self.current_index + 1) % len(self.images)
+        self.show_image()
+
+    def show_prev_image(self):
+        if not self.images:
+            return
+        self.current_index = (self.current_index - 1) % len(self.images)
+        self.show_image()
+
     def keyPressEvent(self, event):
-        self.close()
+        key = event.key()
+        if key == QtCore.Qt.Key.Key_Right:
+            self.show_next_image()
+        elif key == QtCore.Qt.Key.Key_Left:
+            self.show_prev_image()
+        else:
+            self.close()
 
     def mousePressEvent(self, event):
+        # Any mouse click exits slideshow
         self.close()
 
     def closeEvent(self, event):
+        # Stop the timer and accept close
         self.timer.stop()
         event.accept()
-        # Emit destroyed to signal MainWindow
         super().closeEvent(event)
+
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -104,6 +137,8 @@ class MainWindow(QtWidgets.QWidget):
         if folder:
             self.folder_label.setText(folder)
             self.image_list = scan_images(folder)
+            # Shuffle images for random order
+            random.shuffle(self.image_list)
             self.count_label.setText(f"{len(self.image_list)} Images found.")
 
     def start_slideshow(self):
@@ -116,6 +151,7 @@ class MainWindow(QtWidgets.QWidget):
         self.slideshow = SlideshowWindow(self.image_list, interval)
         self.slideshow.destroyed.connect(self.show)
         self.slideshow.show()
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
